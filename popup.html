@@ -12,11 +12,22 @@
     <div class="header">
       <div class="header-title">
         <h1>🌐 Proxy Manager</h1>
-        <span class="version" id="versionText"></span>
+        <div class="header-info">
+          <span class="version" id="versionText"></span>
+          <a href="#" class="repo-link" id="repoLink" title="GitHub Repository">🏠</a>
+        </div>
       </div>
-      <div class="status">
-        <div class="status-dot" id="statusDot"></div>
-        <span class="status-text" id="statusText">Отключен</span>
+      <div class="header-controls">
+        <div class="language-selector">
+          <select id="languageSelect" class="language-select">
+            <option value="ru">🇷🇺 Русский</option>
+            <option value="en">🇺🇸 English</option>
+          </select>
+        </div>
+        <div class="status">
+          <div class="status-dot" id="statusDot"></div>
+          <span class="status-text" id="statusText">Отключен</span>
+        </div>
       </div>
     </div>
 

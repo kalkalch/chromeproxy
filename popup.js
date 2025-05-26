@@ -45,10 +45,10 @@ class ProxyPopup {
     
     if (state.enabled) {
       statusDot.classList.add('active');
-      statusText.textContent = 'Включен';
+      statusText.textContent = this.translations?.statusEnabled || 'Включен';
     } else {
       statusDot.classList.remove('active');
-      statusText.textContent = 'Отключен';
+      statusText.textContent = this.translations?.statusDisabled || 'Отключен';
     }
 
     // Update servers list
@@ -59,21 +59,24 @@ class ProxyPopup {
     const serverList = document.getElementById('serverList');
     
     if (servers.length === 0) {
+      const noServersText = this.translations?.noServers || 'Нет настроенных серверов';
       serverList.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">🌐</div>
-          <div class="empty-state-text">Нет настроенных серверов</div>
+          <div class="empty-state-text">${noServersText}</div>
         </div>
       `;
       return;
     }
 
+    const exclusionsText = this.translations?.exclusions || 'исключений';
+    
     serverList.innerHTML = servers.map(server => `
       <div class="server-item ${server.active ? 'active' : ''}" data-id="${server.id}">
         <div class="server-name">${this.escapeHtml(server.name)}</div>
         <div class="server-details">
           ${this.getServerTypeLabel(server.type)} • ${this.escapeHtml(server.host)}:${server.port}
-          ${server.excludeList && server.excludeList.length > 0 ? ` • ${server.excludeList.length} исключений` : ''}
+          ${server.excludeList && server.excludeList.length > 0 ? ` • ${server.excludeList.length} ${exclusionsText}` : ''}
         </div>
         <div class="server-actions">
           <button class="btn-edit" data-id="${server.id}" title="Редактировать">✏️</button>
@@ -102,6 +105,17 @@ class ProxyPopup {
     // DNS toggle
     document.getElementById('dnsProxyToggle').addEventListener('change', (e) => {
       this.toggleDnsProxy(e.target.checked);
+    });
+
+    // Repository link
+    document.getElementById('repoLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      this.openRepository();
+    });
+
+    // Language selector
+    document.getElementById('languageSelect').addEventListener('change', (e) => {
+      this.changeLanguage(e.target.value);
     });
 
     // Update settings
@@ -139,8 +153,9 @@ class ProxyPopup {
       }
     });
 
-    // Load update settings
+    // Load update settings and language
     this.loadUpdateSettings();
+    this.loadLanguage();
   }
 
   bindServerEvents() {
@@ -186,10 +201,10 @@ class ProxyPopup {
       
       if (enabled) {
         statusDot.classList.add('active');
-        statusText.textContent = 'Включен';
+        statusText.textContent = this.translations?.statusEnabled || 'Включен';
       } else {
         statusDot.classList.remove('active');
-        statusText.textContent = 'Отключен';
+        statusText.textContent = this.translations?.statusDisabled || 'Отключен';
       }
     } catch (error) {
       console.error('Error toggling proxy:', error);
@@ -449,6 +464,122 @@ class ProxyPopup {
     } catch (error) {
       console.error('Error toggling auto update:', error);
     }
+  }
+
+  async openRepository() {
+    try {
+      // Open GitHub repository in new tab
+      await chrome.tabs.create({
+        url: 'https://github.com/kalkalch/chromeproxy'
+      });
+    } catch (error) {
+      console.error('Error opening repository:', error);
+    }
+  }
+
+  async changeLanguage(language) {
+    try {
+      // Save language preference
+      await chrome.storage.sync.set({ language: language });
+      
+      // Apply language immediately
+      this.applyLanguage(language);
+    } catch (error) {
+      console.error('Error changing language:', error);
+    }
+  }
+
+  async loadLanguage() {
+    try {
+      // Load saved language preference
+      const result = await chrome.storage.sync.get(['language']);
+      const language = result.language || 'ru'; // Default to Russian
+      
+      // Set language selector
+      const languageSelect = document.getElementById('languageSelect');
+      languageSelect.value = language;
+      
+      // Apply language
+      this.applyLanguage(language);
+    } catch (error) {
+      console.error('Error loading language:', error);
+      // Default to Russian on error
+      this.applyLanguage('ru');
+    }
+  }
+
+  applyLanguage(language) {
+    const translations = {
+      ru: {
+        statusEnabled: 'Включен',
+        statusDisabled: 'Отключен',
+        enableProxy: 'Включить прокси',
+        dnsProxy: 'DNS запросы через прокси',
+        dnsDescription: 'Направлять DNS запросы через прокси сервер (может замедлить соединение)',
+        updates: 'Обновления',
+        checkButton: 'Проверить',
+        autoUpdate: 'Автоматическая проверка обновлений',
+        servers: 'Серверы',
+        addServer: '+ Добавить сервер',
+        noServers: 'Нет настроенных серверов',
+        exclusions: 'исключений',
+        addServerTitle: 'Добавить сервер',
+        editServerTitle: 'Редактировать сервер',
+        serverName: 'Название сервера *',
+        serverType: 'Тип прокси *',
+        host: 'Хост *',
+        port: 'Порт *',
+        excludeList: 'Список исключений',
+        excludeHelp: 'Домены и IP, которые не будут использовать прокси (по одному на строку)',
+        cancel: 'Отмена',
+        save: 'Сохранить'
+      },
+      en: {
+        statusEnabled: 'Enabled',
+        statusDisabled: 'Disabled',
+        enableProxy: 'Enable proxy',
+        dnsProxy: 'DNS queries through proxy',
+        dnsDescription: 'Route DNS queries through proxy server (may slow down connection)',
+        updates: 'Updates',
+        checkButton: 'Check',
+        autoUpdate: 'Automatic update checking',
+        servers: 'Servers',
+        addServer: '+ Add server',
+        noServers: 'No configured servers',
+        exclusions: 'exclusions',
+        addServerTitle: 'Add server',
+        editServerTitle: 'Edit server',
+        serverName: 'Server name *',
+        serverType: 'Proxy type *',
+        host: 'Host *',
+        port: 'Port *',
+        excludeList: 'Exclude list',
+        excludeHelp: 'Domains and IPs that will not use proxy (one per line)',
+        cancel: 'Cancel',
+        save: 'Save'
+      }
+    };
+
+    const t = translations[language] || translations.ru;
+
+    // Update UI elements
+    document.querySelector('.toggle-label').textContent = t.enableProxy;
+    document.querySelector('.checkbox-label').textContent = t.dnsProxy;
+    document.querySelector('.dns-description').textContent = t.dnsDescription;
+    document.querySelector('.update-section h3').textContent = `🔄 ${t.updates}`;
+    document.getElementById('checkUpdateBtn').textContent = t.checkButton;
+    document.querySelector('.update-section .checkbox-label').textContent = t.autoUpdate;
+    document.querySelector('.server-section h3').textContent = t.servers;
+    document.getElementById('addServerBtn').textContent = t.addServer;
+
+    // Update status text
+    const statusText = document.getElementById('statusText');
+    const proxyToggle = document.getElementById('proxyToggle');
+    statusText.textContent = proxyToggle.checked ? t.statusEnabled : t.statusDisabled;
+
+    // Store current language for dynamic updates
+    this.currentLanguage = language;
+    this.translations = t;
   }
 }
 

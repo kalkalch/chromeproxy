@@ -1,34 +1,48 @@
 # Changelog
 
-Все важные изменения в этом проекте будут документированы в этом файле.
+All notable changes to this project will be documented in this file.
 
-Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-и этот проект придерживается [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2024-12-19
+
+### Added
+- **Repository Link**: Added home/repository link (🏠 icon) in extension header
+- **Language Switcher**: Russian (🇷🇺) and English (🇺🇸) language options
+- **Internationalization**: Comprehensive localization system for all UI elements
+- **Language Persistence**: Language preference saved in chrome.storage.sync
+- **Dynamic Translation**: Real-time text updates when language is changed
+
+### Changed
+- **Documentation**: Translated CHANGELOG.md from Russian to English
+- **Documentation Cleanup**: Removed unnecessary sections from README files
+- **UI Enhancement**: Improved header layout with language controls
 
 ## [0.0.1] - 2024-12-19
 
-### Добавлено
-- **Управление прокси-серверами**: Добавление, редактирование и удаление серверов
-- **Поддержка протоколов**: HTTP/HTTPS
-- **Переключение одним кликом**: Включение/выключение прокси одной кнопкой
-- **Выбор сервера**: Быстрое переключение между настроенными серверами
-- **DNS через прокси**: Опциональная функция направления DNS запросов через прокси
-- **Список исключений**: Настройка доменов и IP, которые не используют прокси
-- **Система обновлений**: Автоматическая проверка обновлений через GitHub API
-- **Уведомления**: Chrome notifications о доступных обновлениях
-- **Современный интерфейс**: Красивый и удобный popup с градиентным дизайном
-- **Отображение версии**: Показ текущей версии в заголовке расширения
+### Added
+- **Proxy Server Management**: Add, edit, and delete proxy servers
+- **Protocol Support**: HTTP/HTTPS
+- **One-Click Toggle**: Enable/disable proxy with a single click
+- **Server Selection**: Quick switching between configured servers
+- **DNS through Proxy**: Optional routing of DNS queries through proxy
+- **Exclude Lists**: Configure domains and IPs that bypass the proxy
+- **Update System**: Automatic checking for extension updates via GitHub API
+- **Notifications**: Chrome notifications about available updates
+- **Modern Interface**: Beautiful and user-friendly popup with gradient design
+- **Version Display**: Show current version in extension header
 
-### Система сборки
-- **Makefile**: Автоматизированная сборка с командами build, clean, package, release
-- **GitHub Actions**: CI/CD pipeline для автоматической сборки и создания релизов
-- **Генерация иконок**: Автоматическое создание иконок разных размеров из SVG
+### Build System
+- **Makefile**: Automated build with commands: build, clean, package, release
+- **GitHub Actions**: CI/CD pipeline for automatic builds and release creation
+- **Icon Generation**: Automatic creation of icons in different sizes from SVG
 
-### Техническое
-- Использование Chrome Extension Manifest V3
-- Хранение настроек в chrome.storage.sync
-- Service Worker для фоновых операций
-- Семантическое сравнение версий
-- Система повторов с экспоненциальной задержкой при ошибках API
-- Автоматическая миграция настроек при обновлении
-- Резервное копирование и восстановление данных 
+### Technical
+- Chrome Extension Manifest V3 implementation
+- Settings storage in chrome.storage.sync
+- Service Worker for background operations
+- Semantic version comparison
+- Exponential backoff retry system for API errors
+- Automatic settings migration during updates
+- Backup and recovery system
