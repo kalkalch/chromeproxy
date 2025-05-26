@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proxy Manager</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-title">
+        <h1>🌐 Proxy Manager</h1>
+        <span class="version" id="versionText"></span>
+      </div>
+      <div class="status">
+        <div class="status-dot" id="statusDot"></div>
+        <span class="status-text" id="statusText">Отключен</span>
+      </div>
+    </div>
+
+    <!-- Proxy Toggle -->
+    <div class="toggle-section">
+      <label class="toggle">
+        <input type="checkbox" id="proxyToggle">
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Включить прокси</span>
+      </label>
+    </div>
+
+    <!-- Global DNS Option -->
+    <div class="dns-section">
+      <label class="checkbox-container">
+        <input type="checkbox" id="dnsProxyToggle">
+        <span class="checkmark"></span>
+        <span class="checkbox-label">DNS запросы через прокси</span>
+      </label>
+      <div class="dns-description">
+        Направлять DNS запросы через прокси сервер (может замедлить соединение)
+      </div>
+    </div>
+
+    <!-- Update Settings -->
+    <div class="update-section">
+      <div class="section-header">
+        <h3>🔄 Обновления</h3>
+        <button class="btn btn-secondary btn-small" id="checkUpdateBtn">Проверить</button>
+      </div>
+      
+      <label class="checkbox-container">
+        <input type="checkbox" id="autoUpdateToggle">
+        <span class="checkmark"></span>
+        <span class="checkbox-label">Автоматическая проверка обновлений</span>
+      </label>
+      
+      <div class="update-info" id="updateInfo" style="display: none;">
+        <div class="update-status" id="updateStatus"></div>
+        <div class="update-details" id="updateDetails"></div>
+      </div>
+    </div>
+
+    <!-- Server List -->
+    <div class="server-section">
+      <div class="section-header">
+        <h3>Серверы</h3>
+        <button class="btn btn-primary" id="addServerBtn">+ Добавить сервер</button>
+      </div>
+      <div class="server-list" id="serverList">
+        <!-- Servers will be rendered here -->
+      </div>
+    </div>
+
+    <!-- Add Server Form -->
+    <div class="form-overlay" id="addServerForm" style="display: none;">
+      <div class="form-container">
+        <div class="form-header">
+          <h3 id="formTitle">Добавить сервер</h3>
+          <button class="btn-close" id="cancelBtn">&times;</button>
+        </div>
+        
+        <form id="serverForm">
+          <div class="form-group">
+            <label for="serverName">Название сервера *</label>
+            <input type="text" id="serverName" name="serverName" required placeholder="Мой прокси сервер">
+          </div>
+
+          <div class="form-group">
+            <label for="serverType">Тип прокси *</label>
+            <select id="serverType" name="serverType" required>
+              <option value="http">HTTP/HTTPS</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="serverHost">Хост *</label>
+              <input type="text" id="serverHost" name="serverHost" required placeholder="proxy.example.com">
+            </div>
+            <div class="form-group">
+              <label for="serverPort">Порт *</label>
+              <input type="number" id="serverPort" name="serverPort" required placeholder="8080" min="1" max="65535">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="excludeList">Список исключений</label>
+            <textarea id="excludeList" name="excludeList" placeholder="localhost&#10;127.0.0.1&#10;*.local&#10;example.com" rows="4"></textarea>
+            <div class="form-help">Домены и IP, которые не будут использовать прокси (по одному на строку)</div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="cancelBtn2">Отмена</button>
+            <button type="submit" class="btn btn-primary" id="saveBtn">Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html> 
