@@ -105,7 +105,7 @@ jobs:
         
         if [ -z "$CHANGELOG_CONTENT" ]; then
           echo "No changelog found for version $VERSION"
-          CHANGELOG_CONTENT="Информация об изменениях не найдена в CHANGELOG.md"
+          CHANGELOG_CONTENT="No changelog information found for this version"
         fi
         
         # Save to file to handle multiline content
@@ -127,24 +127,24 @@ jobs:
           
           ---
           
-          ### 📦 Установка
-          1. Скачайте файл `${{ steps.package.outputs.name }}`
-          2. Распакуйте архив
-          3. Откройте Chrome и перейдите в `chrome://extensions/`
-          4. Включите "Режим разработчика"
-          5. Нажмите "Загрузить распакованное расширение"
-          6. Выберите распакованную папку
+          ### 📦 Installation
+          1. Download the `${{ steps.package.outputs.name }}` file
+          2. Extract the archive
+          3. Open Chrome and go to `chrome://extensions/`
+          4. Enable "Developer mode"
+          5. Click "Load unpacked extension"
+          6. Select the extracted folder
           
-          ### ✨ Основные возможности
-          - 🌐 Быстрое переключение прокси серверов
-          - 🔒 Поддержка HTTP/HTTPS протоколов
-          - 🌍 DNS запросы через прокси (опционально)
-          - 📝 Списки исключений для каждого сервера
-          - 🔄 Автоматическая проверка обновлений
-          - 🌐 Поддержка русского и английского языков
+          ### ✨ Key Features
+          - 🌐 Quick proxy server switching
+          - 🔒 HTTP/HTTPS protocol support
+          - 🌍 DNS queries through proxy (optional)
+          - 📝 Exclusion lists for each server
+          - 🔄 Automatic update checking
+          - 🌐 Russian and English language support
           
           ---
-          **Автоматическая сборка через GitHub Actions**
+          **Automated build via GitHub Actions**
         files: ${{ steps.package.outputs.path }}
         draft: false
         prerelease: false 
