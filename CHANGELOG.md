@@ -5,54 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.3] - 2024-12-27
-
-### Fixed
-- **Critical**: Fixed Chrome Proxy API configuration format using `singleProxy` instead of separate protocol configs
-- **Critical**: Resolved "Invalid invocation" error when applying proxy settings
-- Improved proxy diagnostics to properly test connection through proxy server
-- Enhanced proxy testing with direct IP comparison for accurate results
-- Fixed connection reliability issues with better error handling and retry mechanisms
-
-### Changed
-- Improved individual server diagnostics with more accurate proxy detection
-- Enhanced diagnostic results display with direct IP comparison
-- Increased diagnostic timeout to 15 seconds for better reliability
-- Better error messages for proxy connection issues
-
-### Technical
-- Updated Chrome Proxy API usage to follow Manifest V3 best practices
-- Added `tabs` permission for diagnostic functionality
-- Improved background script message handling with proper error recovery
-
-## [0.1.2] - 2024-12-27
+## [0.2.0] - 2024-12-27
 
 ### Added
-- Individual server diagnostics with 🔍 button for each proxy server
-- Connection testing with response time measurement
-- Real IP detection through proxy
-- Comprehensive error handling for connection issues
-- Automatic retry mechanism for background script communication
-- Connection error recovery with reload functionality
+- **Enhanced Proxy Diagnostics**: Real IP detection and traffic verification to confirm proxy is working
+- **IP Comparison**: Shows original IP vs proxy IP to verify traffic routing
+- **Comprehensive Localization**: Full English and Russian language support for all UI elements
+- **Form Validation**: Proper error messages with localization support
+- **Development Guidelines**: Added .cursorrules file with comprehensive project guidelines
 
 ### Changed
-- Removed global diagnostics button in favor of per-server diagnostics
-- Improved server list layout with dedicated diagnostics button
-- Enhanced error messages with user-friendly descriptions
-- Better visual feedback during diagnostic operations
+- **Default Language**: English is now the default language (was Russian)
+- **Main Title**: Updated from "Proxy Manager" to "Chrome Proxy Manager"
+- **Simplified Server Form**: Removed proxy type selection (always HTTP/HTTPS)
+- **Enhanced Diagnostics**: Improved proxy testing with actual traffic verification
+- **Better Error Handling**: All error messages now properly localized
+- **Documentation**: Synchronized README.md and README.ru.md, removed unnecessary sections
 
 ### Fixed
-- "Could not establish connection. Receiving end does not exist" error
-- Background script communication reliability issues
-- Extension context validation on popup initialization
-- Proper error handling for all proxy operations
-- Toggle state reversion on operation failures
+- **Localization Issues**: Fixed untranslated text in server form headers
+- **Diagnostic Accuracy**: Proxy diagnostics now correctly detect if traffic goes through proxy
+- **Form Translations**: All validation messages and form elements properly translated
+- **Connection Error Messages**: Improved error handling with localized messages
 
 ### Technical
-- Added `sendMessageWithRetry` method with exponential backoff
-- Improved message handling in background script
-- Enhanced extension lifecycle management
-- Better error recovery mechanisms
+- Enhanced proxy testing with real HTTP requests through proxy
+- Improved IP detection using external services
+- Better timeout handling for diagnostic operations (increased to 10 seconds)
+- Comprehensive translation system for all user-facing text
+- Streamlined build process and documentation
 
 ## [0.1.1] - 2024-12-19
 
