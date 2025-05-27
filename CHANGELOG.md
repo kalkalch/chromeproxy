@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2024-12-19
+
+### Fixed
+- **Proxy Connection**: Fixed proxy settings to work properly for all protocols (HTTP/HTTPS/FTP)
+- **DNS Handling**: Added fallbackToDirect option for better DNS resolution when DNS through proxy is disabled
+- **GitHub Releases**: Fixed changelog extraction for automatic release notes generation
+
+### Added
+- **Proxy Diagnostics**: Added diagnostics button (🔍) to check current proxy settings
+- **Debug Functionality**: Enhanced logging and verification of applied proxy settings
+
+### Changed
+- **Release Process**: Improved GitHub Actions workflow to automatically extract changelog content
+- **Release Notes**: Enhanced release notes format with proper changelog information and emojis
+
 ## [0.1.0] - 2024-12-19
 
 ### Added
