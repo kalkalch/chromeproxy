@@ -6,6 +6,12 @@ class ProxyPopup {
   }
 
   async init() {
+    // Check if extension context is valid
+    if (!chrome.runtime?.id) {
+      this.showConnectionError();
+      return;
+    }
+
     await this.loadState();
     this.loadVersion();
     this.bindEvents();
@@ -14,14 +20,69 @@ class ProxyPopup {
   async loadState() {
     try {
       // Get proxy state from background script
-      const response = await chrome.runtime.sendMessage({ action: 'getState' });
+      const response = await this.sendMessageWithRetry({ action: 'getState' });
       
       if (response) {
         this.updateUI(response);
       }
     } catch (error) {
       console.error('Error loading state:', error);
+      this.showConnectionError();
     }
+  }
+
+  async sendMessageWithRetry(message, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await chrome.runtime.sendMessage(message);
+        if (chrome.runtime.lastError) {
+          throw new Error(chrome.runtime.lastError.message);
+        }
+        return response;
+      } catch (error) {
+        console.warn(`Message attempt ${attempt}/${maxRetries} failed:`, error.message);
+        
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+        
+        // Try to reload the extension context
+        if (error.message.includes('Receiving end does not exist')) {
+          try {
+            await chrome.runtime.reload();
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (reloadError) {
+            console.warn('Could not reload extension:', reloadError);
+          }
+        }
+      }
+    }
+  }
+
+  showConnectionError() {
+    const container = document.querySelector('.container');
+    const connectionErrorTitle = this.translations?.connectionError || 'Connection Error';
+    const connectionErrorText = this.translations?.connectionErrorText || 'Unable to connect to extension background script.';
+    const reloadText = this.translations?.reload || 'Reload';
+    
+    container.innerHTML = `
+      <div style="padding: 20px; text-align: center; color: #ff4757;">
+        <h3>⚠️ ${connectionErrorTitle}</h3>
+        <p>${connectionErrorText}</p>
+        <button onclick="location.reload()" style="
+          background: #667eea; 
+          color: white; 
+          border: none; 
+          padding: 10px 20px; 
+          border-radius: 6px; 
+          cursor: pointer;
+          margin-top: 10px;
+        ">${reloadText}</button>
+      </div>
+    `;
   }
 
   loadVersion() {
@@ -73,12 +134,15 @@ class ProxyPopup {
     
     serverList.innerHTML = servers.map(server => `
       <div class="server-item ${server.active ? 'active' : ''}" data-id="${server.id}">
-        <div class="server-name">${this.escapeHtml(server.name)}</div>
-        <div class="server-details">
-          ${this.getServerTypeLabel(server.type)} • ${this.escapeHtml(server.host)}:${server.port}
-          ${server.excludeList && server.excludeList.length > 0 ? ` • ${server.excludeList.length} ${exclusionsText}` : ''}
+        <div class="server-info">
+          <div class="server-name">${this.escapeHtml(server.name)}</div>
+          <div class="server-details">
+            ${this.getServerTypeLabel(server.type)} • ${this.escapeHtml(server.host)}:${server.port}
+            ${server.excludeList && server.excludeList.length > 0 ? ` • ${server.excludeList.length} ${exclusionsText}` : ''}
+          </div>
         </div>
         <div class="server-actions">
+          <button class="btn-diagnose" data-id="${server.id}" title="Диагностика сервера">🔍</button>
           <button class="btn-edit" data-id="${server.id}" title="Редактировать">✏️</button>
           <button class="btn-delete" data-id="${server.id}" title="Удалить">🗑️</button>
         </div>
@@ -123,10 +187,6 @@ class ProxyPopup {
       this.checkForUpdates();
     });
 
-    document.getElementById('diagnosticsBtn').addEventListener('click', () => {
-      this.checkProxyDiagnostics();
-    });
-
     document.getElementById('autoUpdateToggle').addEventListener('change', (e) => {
       this.toggleAutoUpdate(e.target.checked);
     });
@@ -166,10 +226,21 @@ class ProxyPopup {
     // Server selection
     document.querySelectorAll('.server-item').forEach(item => {
       item.addEventListener('click', (e) => {
-        if (!e.target.classList.contains('btn-edit') && !e.target.classList.contains('btn-delete')) {
+        if (!e.target.classList.contains('btn-edit') && 
+            !e.target.classList.contains('btn-delete') && 
+            !e.target.classList.contains('btn-diagnose')) {
           const serverId = item.dataset.id;
           this.selectServer(serverId);
         }
+      });
+    });
+
+    // Diagnose buttons
+    document.querySelectorAll('.btn-diagnose').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const serverId = btn.dataset.id;
+        this.diagnoseServer(serverId);
       });
     });
 
@@ -194,7 +265,7 @@ class ProxyPopup {
 
   async toggleProxy(enabled) {
     try {
-      await chrome.runtime.sendMessage({
+      await this.sendMessageWithRetry({
         action: 'toggleProxy',
         enabled: enabled
       });
@@ -212,23 +283,33 @@ class ProxyPopup {
       }
     } catch (error) {
       console.error('Error toggling proxy:', error);
+      const proxyErrorText = this.translations?.proxyError || 'Ошибка переключения прокси';
+      alert(`${proxyErrorText}: ${error.message}`);
+      // Revert toggle state
+      const proxyToggle = document.getElementById('proxyToggle');
+      proxyToggle.checked = !enabled;
     }
   }
 
   async toggleDnsProxy(enabled) {
     try {
-      await chrome.runtime.sendMessage({
+      await this.sendMessageWithRetry({
         action: 'toggleDnsProxy',
         enabled: enabled
       });
     } catch (error) {
       console.error('Error toggling DNS proxy:', error);
+      const dnsErrorText = this.translations?.dnsError || 'Ошибка переключения DNS';
+      alert(`${dnsErrorText}: ${error.message}`);
+      // Revert toggle state
+      const dnsToggle = document.getElementById('dnsProxyToggle');
+      dnsToggle.checked = !enabled;
     }
   }
 
   async selectServer(serverId) {
     try {
-      await chrome.runtime.sendMessage({
+      await this.sendMessageWithRetry({
         action: 'selectServer',
         serverId: serverId
       });
@@ -244,6 +325,8 @@ class ProxyPopup {
       }
     } catch (error) {
       console.error('Error selecting server:', error);
+      const selectErrorText = this.translations?.selectError || 'Ошибка выбора сервера';
+      alert(`${selectErrorText}: ${error.message}`);
     }
   }
 
@@ -254,18 +337,17 @@ class ProxyPopup {
     
     if (server) {
       // Edit mode
-      formTitle.textContent = 'Редактировать сервер';
+      formTitle.textContent = this.translations?.editServerTitle || 'Edit HTTP/HTTPS Server';
       this.currentEditingId = server.id;
       
       // Fill form with server data
       document.getElementById('serverName').value = server.name;
-      document.getElementById('serverType').value = server.type;
       document.getElementById('serverHost').value = server.host;
       document.getElementById('serverPort').value = server.port;
       document.getElementById('excludeList').value = server.excludeList ? server.excludeList.join('\n') : '';
     } else {
       // Add mode
-      formTitle.textContent = 'Добавить сервер';
+      formTitle.textContent = this.translations?.addServerTitle || 'Add HTTP/HTTPS Server';
       this.currentEditingId = null;
       serverForm.reset();
     }
@@ -284,7 +366,7 @@ class ProxyPopup {
     
     const serverData = {
       name: formData.get('serverName').trim(),
-      type: formData.get('serverType'),
+      type: 'http',
       host: formData.get('serverHost').trim(),
       port: parseInt(formData.get('serverPort')),
       excludeList: formData.get('excludeList')
@@ -295,26 +377,28 @@ class ProxyPopup {
 
     // Validation
     if (!serverData.name || !serverData.host || !serverData.port) {
-      alert('Пожалуйста, заполните все обязательные поля');
+      const fillFieldsText = this.translations?.fillAllFields || 'Please fill in all required fields';
+      alert(fillFieldsText);
       return;
     }
 
     if (serverData.port < 1 || serverData.port > 65535) {
-      alert('Порт должен быть от 1 до 65535');
+      const portRangeText = this.translations?.portRange || 'Port must be between 1 and 65535';
+      alert(portRangeText);
       return;
     }
 
     try {
       if (this.currentEditingId) {
         // Update existing server
-        await chrome.runtime.sendMessage({
+        await this.sendMessageWithRetry({
           action: 'updateServer',
           serverId: this.currentEditingId,
           serverData: serverData
         });
       } else {
         // Add new server
-        await chrome.runtime.sendMessage({
+        await this.sendMessageWithRetry({
           action: 'addServer',
           serverData: serverData
         });
@@ -324,13 +408,14 @@ class ProxyPopup {
       await this.loadState(); // Reload to show updated list
     } catch (error) {
       console.error('Error saving server:', error);
-      alert('Ошибка при сохранении сервера');
+      const saveErrorText = this.translations?.saveError || 'Error saving server';
+      alert(saveErrorText);
     }
   }
 
   async editServer(serverId) {
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await this.sendMessageWithRetry({
         action: 'getServer',
         serverId: serverId
       });
@@ -344,18 +429,136 @@ class ProxyPopup {
   }
 
   async deleteServer(serverId) {
-    if (confirm('Вы уверены, что хотите удалить этот сервер?')) {
+    const confirmText = this.translations?.confirmDelete || 'Вы уверены, что хотите удалить этот сервер?';
+    if (confirm(confirmText)) {
       try {
-        await chrome.runtime.sendMessage({
+        await this.sendMessageWithRetry({
           action: 'deleteServer',
           serverId: serverId
         });
         
-        await this.loadState(); // Reload to show updated list
+        // Reload state
+        await this.loadState();
       } catch (error) {
         console.error('Error deleting server:', error);
       }
     }
+  }
+
+  async diagnoseServer(serverId) {
+    try {
+      // Show loading state
+      const btn = document.querySelector(`[data-id="${serverId}"].btn-diagnose`);
+      const originalText = btn.textContent;
+      btn.textContent = '⏳';
+      btn.disabled = true;
+
+      // Get server details
+      const response = await this.sendMessageWithRetry({
+        action: 'getServerDetails',
+        serverId: serverId
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to get server details');
+      }
+
+      const server = response.server;
+      
+      // Test proxy connection
+      const testResult = await this.testProxyConnection(server);
+      
+      // Show results
+      this.showDiagnosticResults(server, testResult);
+
+    } catch (error) {
+      console.error('Error diagnosing server:', error);
+      const errorText = this.translations?.diagnosticError || 'Ошибка диагностики';
+      alert(`${errorText}: ${error.message}`);
+    } finally {
+      // Restore button state
+      const btn = document.querySelector(`[data-id="${serverId}"].btn-diagnose`);
+      if (btn) {
+        btn.textContent = '🔍';
+        btn.disabled = false;
+      }
+    }
+  }
+
+  async testProxyConnection(server) {
+    try {
+      // First, temporarily apply this server's proxy settings for testing
+      const testResult = await this.sendMessageWithRetry({
+        action: 'testProxyServer',
+        server: server
+      });
+
+      if (testResult.success) {
+        return testResult.result;
+      } else {
+        return {
+          success: false,
+          error: testResult.error || 'Test failed',
+          status: 'error'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        status: 'error'
+      };
+    }
+  }
+
+  showDiagnosticResults(server, testResult) {
+    let statusText, statusIcon;
+    
+    if (testResult.success) {
+      if (testResult.ipChanged) {
+        statusText = this.translations?.trafficThroughProxy || 'Трафик идет через прокси';
+        statusIcon = '✅';
+      } else if (testResult.proxyIp) {
+        statusText = this.translations?.trafficNotThroughProxy || 'Трафик НЕ идет через прокси';
+        statusIcon = '⚠️';
+      } else {
+        statusText = this.translations?.diagnosticSuccess || 'Подключение успешно';
+        statusIcon = '✅';
+      }
+    } else {
+      if (testResult.status === 'unreachable') {
+        statusText = this.translations?.serverUnavailable || 'Сервер недоступен';
+        statusIcon = '❌';
+      } else if (testResult.status === 'timeout') {
+        statusText = this.translations?.connectionTimeout || 'Превышено время ожидания';
+        statusIcon = '⏱️';
+      } else {
+        statusText = this.translations?.diagnosticFailed || 'Подключение не удалось';
+        statusIcon = '❌';
+      }
+    }
+    
+    const responseTimeText = testResult.responseTime ? 
+      `${this.translations?.responseTime || 'Время ответа'}: ${testResult.responseTime}ms` : '';
+    
+    // Показываем только итоговый IP
+    let ipInfo = '';
+    if (testResult.proxyIp) {
+      ipInfo = `🌐 ${this.translations?.yourIP || 'Ваш IP'}: ${testResult.proxyIp}`;
+    }
+    
+    const errorText = testResult.error ? 
+      `${this.translations?.error || 'Ошибка'}: ${testResult.error}` : '';
+    
+    const message = [
+      `${statusIcon} ${server.name} (${server.host}:${server.port})`,
+      statusText,
+      responseTimeText,
+      ipInfo,
+      errorText
+    ].filter(Boolean).join('\n');
+
+    alert(message);
   }
 
   escapeHtml(text) {
@@ -367,7 +570,7 @@ class ProxyPopup {
   // Update functionality
   async loadUpdateSettings() {
     try {
-      const response = await chrome.runtime.sendMessage({ action: 'getUpdateSettings' });
+      const response = await this.sendMessageWithRetry({ action: 'getUpdateSettings' });
       
       if (response && response.updateSettings) {
         const autoUpdateToggle = document.getElementById('autoUpdateToggle');
@@ -409,7 +612,7 @@ class ProxyPopup {
     updateDetails.textContent = '';
 
     try {
-      const response = await chrome.runtime.sendMessage({ action: 'checkForUpdates' });
+      const response = await this.sendMessageWithRetry({ action: 'checkForUpdates' });
       
       if (response && response.updateInfo) {
         const info = response.updateInfo;
@@ -458,7 +661,7 @@ class ProxyPopup {
 
   async toggleAutoUpdate(enabled) {
     try {
-      await chrome.runtime.sendMessage({
+      await this.sendMessageWithRetry({
         action: 'toggleAutoUpdate',
         enabled: enabled
       });
@@ -481,47 +684,7 @@ class ProxyPopup {
     }
   }
 
-  async checkProxyDiagnostics() {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'getProxyDiagnostics'
-      });
-      
-      if (response && response.diagnostics) {
-        console.log('Proxy diagnostics:', response.diagnostics);
-        
-        // Show diagnostics in a simple alert for now
-        const settings = response.diagnostics.value;
-        let message = 'Текущие настройки прокси:\n\n';
-        
-        if (settings && settings.mode) {
-          message += `Режим: ${settings.mode}\n`;
-          
-          if (settings.rules) {
-            if (settings.rules.singleProxy) {
-              message += `Прокси: ${settings.rules.singleProxy.scheme}://${settings.rules.singleProxy.host}:${settings.rules.singleProxy.port}\n`;
-            }
-            
-            if (settings.rules.bypassList && settings.rules.bypassList.length > 0) {
-              message += `Исключения: ${settings.rules.bypassList.join(', ')}\n`;
-            }
-            
-            if (settings.rules.fallbackToDirect) {
-              message += 'Fallback to direct: включен\n';
-            }
-          }
-        } else {
-          message += 'Прокси отключен или настройки не найдены';
-        }
-        
-        alert(message);
-      }
-    } catch (error) {
-      console.error('Error checking proxy diagnostics:', error);
-      alert('Ошибка при получении диагностики прокси');
-    }
-  }
-
+  // Language functionality
   async changeLanguage(language) {
     try {
       // Save language preference
@@ -531,6 +694,8 @@ class ProxyPopup {
       this.applyLanguage(language);
     } catch (error) {
       console.error('Error changing language:', error);
+      const languageErrorText = this.translations?.languageError || 'Ошибка смены языка';
+      alert(`${languageErrorText}: ${error.message}`);
     }
   }
 
@@ -538,7 +703,7 @@ class ProxyPopup {
     try {
       // Load saved language preference
       const result = await chrome.storage.sync.get(['language']);
-      const language = result.language || 'ru'; // Default to Russian
+      const language = result.language || 'en'; // Default to English
       
       // Set language selector
       const languageSelect = document.getElementById('languageSelect');
@@ -548,8 +713,8 @@ class ProxyPopup {
       this.applyLanguage(language);
     } catch (error) {
       console.error('Error loading language:', error);
-      // Default to Russian on error
-      this.applyLanguage('ru');
+      // Default to English on error
+      this.applyLanguage('en');
     }
   }
 
@@ -568,8 +733,8 @@ class ProxyPopup {
         addServer: '+ Добавить сервер',
         noServers: 'Нет настроенных серверов',
         exclusions: 'исключений',
-        addServerTitle: 'Добавить сервер',
-        editServerTitle: 'Редактировать сервер',
+        addServerTitle: 'Добавить HTTP/HTTPS сервер',
+        editServerTitle: 'Редактировать HTTP/HTTPS сервер',
         serverName: 'Название сервера *',
         serverType: 'Тип прокси *',
         host: 'Хост *',
@@ -577,7 +742,29 @@ class ProxyPopup {
         excludeList: 'Список исключений',
         excludeHelp: 'Домены и IP, которые не будут использовать прокси (по одному на строку)',
         cancel: 'Отмена',
-        save: 'Сохранить'
+        save: 'Сохранить',
+        confirmDelete: 'Вы уверены, что хотите удалить этот сервер?',
+        diagnosticError: 'Ошибка диагностики',
+        diagnosticSuccess: 'Подключение успешно',
+        diagnosticFailed: 'Подключение не удалось',
+        responseTime: 'Время ответа',
+        currentIP: 'Текущий IP',
+        error: 'Ошибка',
+        trafficThroughProxy: 'Трафик идет через прокси',
+        trafficNotThroughProxy: 'Трафик НЕ идет через прокси',
+        serverUnavailable: 'Сервер недоступен',
+        connectionTimeout: 'Превышено время ожидания',
+        yourIP: 'Ваш IP',
+        fillAllFields: 'Пожалуйста, заполните все обязательные поля',
+        portRange: 'Порт должен быть от 1 до 65535',
+        saveError: 'Ошибка при сохранении сервера',
+        connectionError: 'Ошибка подключения',
+        connectionErrorText: 'Не удается связаться с фоновым скриптом расширения.',
+        reload: 'Перезагрузить',
+        proxyError: 'Ошибка переключения прокси',
+        dnsError: 'Ошибка переключения DNS',
+        selectError: 'Ошибка выбора сервера',
+        languageError: 'Ошибка смены языка'
       },
       en: {
         statusEnabled: 'Enabled',
@@ -592,8 +779,8 @@ class ProxyPopup {
         addServer: '+ Add server',
         noServers: 'No configured servers',
         exclusions: 'exclusions',
-        addServerTitle: 'Add server',
-        editServerTitle: 'Edit server',
+        addServerTitle: 'Add HTTP/HTTPS server',
+        editServerTitle: 'Edit HTTP/HTTPS server',
         serverName: 'Server name *',
         serverType: 'Proxy type *',
         host: 'Host *',
@@ -601,7 +788,29 @@ class ProxyPopup {
         excludeList: 'Exclude list',
         excludeHelp: 'Domains and IPs that will not use proxy (one per line)',
         cancel: 'Cancel',
-        save: 'Save'
+        save: 'Save',
+        confirmDelete: 'Are you sure you want to delete this server?',
+        diagnosticError: 'Diagnostic error',
+        diagnosticSuccess: 'Connection successful',
+        diagnosticFailed: 'Connection failed',
+        responseTime: 'Response time',
+        currentIP: 'Current IP',
+        error: 'Error',
+        trafficThroughProxy: 'Traffic goes through proxy',
+        trafficNotThroughProxy: 'Traffic does NOT go through proxy',
+        serverUnavailable: 'Server unavailable',
+        connectionTimeout: 'Connection timeout',
+        yourIP: 'Your IP',
+        fillAllFields: 'Please fill in all required fields',
+        portRange: 'Port must be between 1 and 65535',
+        saveError: 'Error saving server',
+        connectionError: 'Connection Error',
+        connectionErrorText: 'Unable to connect to extension background script.',
+        reload: 'Reload',
+        proxyError: 'Proxy switching error',
+        dnsError: 'DNS switching error',
+        selectError: 'Server selection error',
+        languageError: 'Language switching error'
       }
     };
 

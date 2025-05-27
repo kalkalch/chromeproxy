@@ -8,6 +8,7 @@ class ProxyManager {
       activeServerId: null,
       updateSettings: {
         autoCheck: true,
+        autoInstall: false, // Auto-install updates
         lastCheck: null,
         checkInterval: 60 * 60 * 1000, // 1 hour in milliseconds (changed from 24 hours)
         updateUrl: 'https://api.github.com/repos/kalkalch/chromeproxy/releases/latest',
@@ -30,9 +31,13 @@ class ProxyManager {
     // Check for extension updates and migrate settings if needed
     await this.checkExtensionUpdate();
     
-    // Set up message listener
+    // Set up message listener with error handling
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      this.handleMessage(message, sender, sendResponse);
+      // Handle message asynchronously
+      this.handleMessage(message, sender, sendResponse).catch(error => {
+        console.error('Error in message handler:', error);
+        sendResponse({ error: error.message });
+      });
       return true; // Keep message channel open for async response
     });
 
@@ -48,6 +53,8 @@ class ProxyManager {
     if (this.state.updateSettings.autoCheck) {
       this.scheduleUpdateCheck();
     }
+
+    console.log('ProxyManager initialized successfully');
   }
 
   async loadState() {
@@ -157,6 +164,20 @@ class ProxyManager {
           sendResponse({ server });
           break;
 
+        case 'getServerDetails':
+          const serverDetails = this.getServer(message.serverId);
+          if (serverDetails) {
+            sendResponse({ success: true, server: serverDetails });
+          } else {
+            sendResponse({ success: false, error: 'Сервер не найден' });
+          }
+          break;
+
+        case 'testProxyServer':
+          const testResult = await this.testProxyServer(message.server);
+          sendResponse(testResult);
+          break;
+
         case 'checkForUpdates':
           const updateInfo = await this.checkForUpdates();
           sendResponse({ updateInfo });
@@ -177,6 +198,16 @@ class ProxyManager {
         case 'getProxyDiagnostics':
           const diagnostics = await this.getCurrentProxySettings();
           sendResponse({ diagnostics });
+          break;
+
+        case 'forceApplyProxy':
+          const activeServer = this.getActiveServer();
+          if (activeServer && this.state.enabled) {
+            await this.applyProxySettings(activeServer);
+            sendResponse({ success: true, message: 'Настройки прокси переприменены' });
+          } else {
+            sendResponse({ success: false, message: 'Нет активного сервера или прокси отключен' });
+          }
           break;
 
         default:
@@ -200,43 +231,63 @@ class ProxyManager {
   }
 
   async toggleProxy(enabled) {
+    console.log(`Toggling proxy: ${enabled}`);
+    
+    // Check if we have proxy permission
+    try {
+      const hasPermission = await chrome.permissions.contains({
+        permissions: ['proxy']
+      });
+      
+      if (!hasPermission) {
+        throw new Error('Отсутствует разрешение "proxy". Переустановите расширение.');
+      }
+    } catch (permError) {
+      console.error('Permission check failed:', permError);
+      // Continue anyway, as the permission might be granted but check failed
+    }
+    
     this.state.enabled = enabled;
     
     if (enabled) {
       // Enable proxy with active server
       const activeServer = this.getActiveServer();
+      console.log('Active server for proxy:', activeServer);
+      
       if (activeServer) {
+        console.log('Applying proxy settings for active server...');
         await this.applyProxySettings(activeServer);
       } else if (this.state.servers.length > 0) {
         // Auto-select first server if none is active
+        console.log('No active server, selecting first available...');
         await this.selectServer(this.state.servers[0].id);
         await this.applyProxySettings(this.state.servers[0]);
       } else {
         // No servers available
         this.state.enabled = false;
-        throw new Error('Нет доступных серверов');
+        throw new Error('Нет доступных серверов для подключения');
       }
     } else {
       // Disable proxy
+      console.log('Clearing proxy settings...');
       await this.clearProxySettings();
     }
 
     await this.saveState();
     this.updateIcon();
+    
+    console.log(`Proxy toggle completed. Enabled: ${this.state.enabled}`);
   }
 
   async toggleDnsProxy(enabled) {
+    console.log(`DNS through proxy setting changed to: ${enabled}`);
     this.state.dnsEnabled = enabled;
     
-    // If proxy is currently enabled, reapply settings with new DNS option
-    if (this.state.enabled) {
-      const activeServer = this.getActiveServer();
-      if (activeServer) {
-        await this.applyProxySettings(activeServer);
-      }
-    }
-
+    // Note: This setting is now informational only and doesn't affect proxy configuration
+    // DNS handling is managed by the proxy server itself
+    
     await this.saveState();
+    console.log('DNS setting saved (informational only)');
   }
 
   async selectServer(serverId) {
@@ -327,37 +378,67 @@ class ProxyManager {
 
   async applyProxySettings(server) {
     try {
-      const proxyServer = {
-        scheme: this.getProxyScheme(server.type),
-        host: server.host,
-        port: parseInt(server.port)
-      };
-
+      console.log('Applying proxy settings for server:', server);
+      
       const config = {
         mode: 'fixed_servers',
         rules: {
-          singleProxy: proxyServer,
-          proxyForHttp: proxyServer,
-          proxyForHttps: proxyServer,
-          proxyForFtp: proxyServer,
+          singleProxy: {
+            scheme: this.getProxyScheme(server.type),
+            host: server.host,
+            port: parseInt(server.port)
+          },
           bypassList: server.excludeList || []
         }
       };
 
-      // If DNS through proxy is disabled, allow fallback to direct connection for DNS
-      if (!this.state.dnsEnabled) {
-        config.rules.fallbackToDirect = true;
-      }
+      // Note: We don't add fallbackToDirect anymore as it allows bypassing proxy
+      // DNS through proxy is controlled by the proxy server itself
+      console.log('DNS through proxy enabled:', this.state.dnsEnabled);
 
-      await chrome.proxy.settings.set({
-        value: config,
-        scope: 'regular'
+      console.log('Proxy config to apply:', JSON.stringify(config, null, 2));
+
+      // Use Promise-based approach for better error handling
+      return new Promise((resolve, reject) => {
+        chrome.proxy.settings.set({
+          value: config,
+          scope: 'regular'
+        }, () => {
+          if (chrome.runtime.lastError) {
+            console.error('Chrome proxy API error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          
+          console.log('Proxy settings applied successfully');
+          
+          // Verify settings were applied after a short delay
+          setTimeout(async () => {
+            try {
+              const currentSettings = await this.getCurrentProxySettings();
+              console.log('Current proxy settings after apply:', currentSettings);
+              
+              if (currentSettings && currentSettings.value) {
+                if (currentSettings.value.mode === 'system') {
+                  console.warn('Warning: Proxy settings reverted to system mode');
+                } else if (currentSettings.value.mode === 'fixed_servers') {
+                  console.log('Success: Proxy settings are in fixed_servers mode');
+                  if (currentSettings.value.rules?.singleProxy) {
+                    const proxy = currentSettings.value.rules.singleProxy;
+                    console.log(`Active proxy: ${proxy.scheme}://${proxy.host}:${proxy.port}`);
+                  }
+                } else {
+                  console.warn(`Unexpected proxy mode: ${currentSettings.value.mode}`);
+                }
+              }
+            } catch (verifyError) {
+              console.error('Error verifying proxy settings:', verifyError);
+            }
+          }, 1000);
+          
+          resolve();
+        });
       });
-
-      console.log('Proxy settings applied:', config);
-      
-      // Verify settings were applied correctly
-      setTimeout(() => this.getCurrentProxySettings(), 1000);
     } catch (error) {
       console.error('Error applying proxy settings:', error);
       throw error;
@@ -366,8 +447,17 @@ class ProxyManager {
 
   async clearProxySettings() {
     try {
-      await chrome.proxy.settings.clear({ scope: 'regular' });
-      console.log('Proxy settings cleared');
+      return new Promise((resolve, reject) => {
+        chrome.proxy.settings.clear({ scope: 'regular' }, () => {
+          if (chrome.runtime.lastError) {
+            console.error('Chrome proxy API error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          console.log('Proxy settings cleared');
+          resolve();
+        });
+      });
     } catch (error) {
       console.error('Error clearing proxy settings:', error);
       throw error;
@@ -376,9 +466,17 @@ class ProxyManager {
 
   async getCurrentProxySettings() {
     try {
-      const settings = await chrome.proxy.settings.get({ incognito: false });
-      console.log('Current proxy settings:', settings);
-      return settings;
+      return new Promise((resolve, reject) => {
+        chrome.proxy.settings.get({ incognito: false }, (settings) => {
+          if (chrome.runtime.lastError) {
+            console.error('Chrome proxy API error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          console.log('Current proxy settings:', settings);
+          resolve(settings);
+        });
+      });
     } catch (error) {
       console.error('Error getting current proxy settings:', error);
       return null;
@@ -590,17 +688,13 @@ class ProxyManager {
       if (updateInfo.hasUpdate) {
         console.log(`New version available: ${updateInfo.latestVersion}`);
         
-        // Show notification about available update
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icons/icon48.png',
-          title: 'Chrome Proxy Manager',
-          message: `Доступна новая версия ${updateInfo.latestVersion}!`,
-          buttons: [
-            { title: 'Открыть страницу релиза' },
-            { title: 'Напомнить позже' }
-          ]
-        });
+        // If auto-install is enabled, try to download the update
+        if (this.state.updateSettings.autoInstall) {
+          await this.handleAutoInstall(updateInfo);
+        } else {
+          // Show notification about available update
+          this.showUpdateNotification(updateInfo);
+        }
       } else {
         console.log('No updates available');
       }
@@ -617,6 +711,204 @@ class ProxyManager {
         console.log('Skipping next scheduled check due to rate limiting');
       }
     }
+  }
+
+  showUpdateNotification(updateInfo) {
+    chrome.notifications.create('update-available', {
+      type: 'basic',
+      iconUrl: 'icons/icon48.png',
+      title: 'Chrome Proxy Manager',
+      message: `Доступна новая версия ${updateInfo.latestVersion}!`,
+      buttons: [
+        { title: 'Скачать обновление' },
+        { title: 'Напомнить позже' }
+      ]
+    });
+
+    // Handle notification button clicks
+    chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
+      if (notificationId === 'update-available') {
+        if (buttonIndex === 0) {
+          // Download update
+          this.downloadUpdate(updateInfo);
+        }
+        chrome.notifications.clear(notificationId);
+      }
+    });
+
+    // Handle notification click
+    chrome.notifications.onClicked.addListener((notificationId) => {
+      if (notificationId === 'update-available') {
+        chrome.tabs.create({ url: updateInfo.releaseUrl });
+        chrome.notifications.clear(notificationId);
+      }
+    });
+  }
+
+  async handleAutoInstall(updateInfo) {
+    try {
+      console.log('Auto-installing update...');
+      const downloadResult = await this.downloadUpdate(updateInfo);
+      
+      if (downloadResult.success) {
+        // Show notification that update is ready
+        chrome.notifications.create('update-ready', {
+          type: 'basic',
+          iconUrl: 'icons/icon48.png',
+          title: 'Chrome Proxy Manager',
+          message: `Обновление ${updateInfo.latestVersion} готово к установке!`,
+          buttons: [
+            { title: 'Установить сейчас' },
+            { title: 'Установить позже' }
+          ]
+        });
+
+        // Handle installation
+        chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
+          if (notificationId === 'update-ready' && buttonIndex === 0) {
+            this.showInstallInstructions(updateInfo, downloadResult.filePath);
+            chrome.notifications.clear(notificationId);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Auto-install failed:', error);
+      // Fallback to manual notification
+      this.showUpdateNotification(updateInfo);
+    }
+  }
+
+  async downloadUpdate(updateInfo) {
+    try {
+      // Get download URL for the zip file
+      const response = await fetch(updateInfo.releaseUrl.replace('/tag/', '/download/') + '/chrome-proxy-manager.zip');
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+
+      // For Chrome extensions, we can't directly download files to disk
+      // Instead, we'll open the download page
+      chrome.tabs.create({ 
+        url: updateInfo.releaseUrl,
+        active: false 
+      });
+
+      // Store update info for later use
+      await chrome.storage.local.set({
+        pendingUpdate: {
+          version: updateInfo.latestVersion,
+          downloadUrl: updateInfo.releaseUrl,
+          timestamp: Date.now()
+        }
+      });
+
+      return {
+        success: true,
+        filePath: 'Downloads/chrome-proxy-manager.zip'
+      };
+    } catch (error) {
+      console.error('Download failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  showInstallInstructions(updateInfo, filePath) {
+    // Create a detailed notification with installation instructions
+    chrome.notifications.create('install-instructions', {
+      type: 'basic',
+      iconUrl: 'icons/icon48.png',
+      title: 'Установка обновления',
+      message: `Файл скачан. Нажмите для просмотра инструкций по установке.`
+    });
+
+    chrome.notifications.onClicked.addListener((notificationId) => {
+      if (notificationId === 'install-instructions') {
+        // Open installation instructions page
+        this.openInstallInstructionsPage(updateInfo);
+        chrome.notifications.clear(notificationId);
+      }
+    });
+  }
+
+  async openInstallInstructionsPage(updateInfo) {
+    // Create a simple HTML page with instructions
+    const instructionsHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Установка обновления Chrome Proxy Manager</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+          .step { margin: 15px 0; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+          .step-number { background: #667eea; color: white; border-radius: 50%; width: 25px; height: 25px; display: inline-flex; align-items: center; justify-content: center; margin-right: 10px; }
+          .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
+          .button { background: #667eea; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🚀 Обновление Chrome Proxy Manager</h1>
+          <p>Версия ${updateInfo.latestVersion} готова к установке</p>
+        </div>
+        
+        <div class="warning">
+          <strong>⚠️ Важно:</strong> Перед установкой обновления сохраните настройки прокси, так как они могут быть сброшены.
+        </div>
+        
+        <h2>Инструкция по установке:</h2>
+        
+        <div class="step">
+          <span class="step-number">1</span>
+          <strong>Скачайте файл обновления</strong><br>
+          <a href="${updateInfo.releaseUrl}" class="button" target="_blank">Скачать chrome-proxy-manager.zip</a>
+        </div>
+        
+        <div class="step">
+          <span class="step-number">2</span>
+          <strong>Распакуйте архив</strong><br>
+          Извлеките содержимое zip-файла в новую папку
+        </div>
+        
+        <div class="step">
+          <span class="step-number">3</span>
+          <strong>Откройте страницу расширений</strong><br>
+          Перейдите в Chrome по адресу: <code>chrome://extensions/</code>
+        </div>
+        
+        <div class="step">
+          <span class="step-number">4</span>
+          <strong>Удалите старую версию</strong><br>
+          Найдите Chrome Proxy Manager и нажмите "Удалить"
+        </div>
+        
+        <div class="step">
+          <span class="step-number">5</span>
+          <strong>Установите новую версию</strong><br>
+          Включите "Режим разработчика" → "Загрузить распакованное расширение" → выберите папку с новой версией
+        </div>
+        
+        <div class="step">
+          <span class="step-number">6</span>
+          <strong>Восстановите настройки</strong><br>
+          Настройте прокси серверы заново или импортируйте сохраненные настройки
+        </div>
+        
+        <p><strong>После установки обновления эта страница закроется автоматически.</strong></p>
+        
+        <script>
+          // Auto-close after 5 minutes
+          setTimeout(() => window.close(), 300000);
+        </script>
+      </body>
+      </html>
+    `;
+
+    // Create blob URL and open in new tab
+    const blob = new Blob([instructionsHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    chrome.tabs.create({ url: url });
   }
 
   async checkExtensionUpdate() {
@@ -702,6 +994,7 @@ class ProxyManager {
       activeServerId: null,
       updateSettings: {
         autoCheck: true,
+        autoInstall: false,
         lastCheck: null,
         checkInterval: 60 * 60 * 1000,
         updateUrl: 'https://api.github.com/repos/kalkalch/chromeproxy/releases/latest',
@@ -754,6 +1047,202 @@ class ProxyManager {
       default:
         console.log('Unknown install reason:', details.reason);
     }
+  }
+
+  async testProxyServer(server) {
+    try {
+      console.log('Testing proxy server:', server);
+      
+      const startTime = Date.now();
+      
+      // Save current proxy settings to restore later
+      const originalSettings = await this.getCurrentProxySettings();
+      
+      // Test direct connectivity to the proxy port
+      const connectTest = await this.testProxyConnectivity(server.host, server.port);
+      const responseTime = Date.now() - startTime;
+      
+      // Restore original proxy settings after test
+      try {
+        if (originalSettings && originalSettings.value) {
+          await new Promise((resolve, reject) => {
+            chrome.proxy.settings.set({
+              value: originalSettings.value,
+              scope: 'regular'
+            }, () => {
+              if (chrome.runtime.lastError) {
+                console.error('Error restoring proxy settings:', chrome.runtime.lastError);
+                reject(new Error(chrome.runtime.lastError.message));
+                return;
+              }
+              console.log('Original proxy settings restored after test');
+              resolve();
+            });
+          });
+        } else {
+          // Clear proxy settings if no original settings
+          await this.clearProxySettings();
+        }
+      } catch (restoreError) {
+        console.error('Failed to restore original proxy settings:', restoreError);
+        // Continue anyway, don't fail the test because of restore issues
+      }
+      
+      if (connectTest.success) {
+        return {
+          success: true,
+          result: {
+            success: true,
+            responseTime: responseTime,
+            status: 'reachable',
+            message: connectTest.message || 'Прокси сервер работает и отвечает на запросы',
+            proxyIp: connectTest.proxyIp,
+            originalIp: connectTest.originalIp,
+            ipChanged: connectTest.ipChanged
+          }
+        };
+      } else {
+        return {
+          success: true,
+          result: {
+            success: false,
+            responseTime: responseTime,
+            status: 'unreachable',
+            error: connectTest.error,
+            message: 'Прокси сервер недоступен или не отвечает'
+          }
+        };
+      }
+    } catch (error) {
+      console.error('Error testing proxy server:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async testProxyConnectivity(host, port) {
+    return new Promise(async (resolve) => {
+      const timeoutId = setTimeout(() => {
+        resolve({
+          success: false,
+          error: 'Connection timeout'
+        });
+      }, 10000); // Увеличиваем таймаут для более точной проверки
+
+      try {
+        // Step 1: Get current IP without proxy
+        let originalIp = null;
+        try {
+          const directResponse = await fetch('https://api.ipify.org?format=json', {
+            method: 'GET',
+            cache: 'no-cache'
+          });
+          if (directResponse.ok) {
+            const directData = await directResponse.json();
+            originalIp = directData.ip;
+            console.log('Original IP (without proxy):', originalIp);
+          }
+        } catch (error) {
+          console.log('Could not get original IP:', error.message);
+        }
+
+        // Step 2: Test proxy connection
+        const testUrl = 'https://api.ipify.org?format=json'; // Service that returns public IP
+        
+        // Create a temporary proxy configuration for testing
+        const testConfig = {
+          mode: 'fixed_servers',
+          rules: {
+            singleProxy: {
+              scheme: 'http',
+              host: host,
+              port: parseInt(port)
+            }
+          }
+        };
+
+        // Apply test proxy settings temporarily
+        chrome.proxy.settings.set({
+          value: testConfig,
+          scope: 'regular'
+        }, async () => {
+          if (chrome.runtime.lastError) {
+            clearTimeout(timeoutId);
+            resolve({
+              success: false,
+              error: 'Failed to apply test proxy settings'
+            });
+            return;
+          }
+
+          try {
+            // Wait a bit for proxy settings to take effect
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Make a test request through the proxy
+            const response = await fetch(testUrl, {
+              method: 'GET',
+              cache: 'no-cache'
+            });
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+              const data = await response.json();
+              const proxyIp = data.ip;
+              
+              console.log('IP through proxy:', proxyIp);
+              console.log('Original IP:', originalIp);
+
+              // Check if IP changed (traffic goes through proxy)
+              const ipChanged = originalIp && proxyIp !== originalIp;
+              
+              resolve({ 
+                success: true,
+                proxyIp: proxyIp,
+                originalIp: originalIp,
+                ipChanged: ipChanged,
+                message: ipChanged ? 
+                  `Трафик идет через прокси. IP изменился с ${originalIp} на ${proxyIp}` :
+                  originalIp ? 
+                    `Внимание: IP не изменился (${proxyIp}). Возможно, трафик не идет через прокси` :
+                    `Получен IP через прокси: ${proxyIp}`
+              });
+            } else {
+              resolve({
+                success: false,
+                error: `HTTP ${response.status}: ${response.statusText}`
+              });
+            }
+          } catch (fetchError) {
+            clearTimeout(timeoutId);
+            
+            // Check if it's a network error (proxy might be down)
+            if (fetchError.message.includes('Failed to fetch') || 
+                fetchError.message.includes('NetworkError')) {
+              resolve({
+                success: false,
+                error: 'Proxy server not responding'
+              });
+            } else {
+              // Other errors might indicate proxy is there but has issues
+              resolve({
+                success: false,
+                error: fetchError.message
+              });
+            }
+          }
+        });
+      } catch (error) {
+        clearTimeout(timeoutId);
+        resolve({
+          success: false,
+          error: `Connection error: ${error.message}`
+        });
+      }
+    });
   }
 }
 

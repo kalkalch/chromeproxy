@@ -239,38 +239,71 @@ input:checked + .slider:before {
 
 .server-info {
   flex: 1;
+  min-width: 0; /* Allow text truncation */
 }
 
 .server-name {
   font-weight: 600;
   margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .server-details {
   font-size: 12px;
   opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .server-actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  margin-left: 10px;
+  flex-shrink: 0;
 }
 
-.btn-icon {
+.btn-diagnose,
+.btn-edit,
+.btn-delete {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px;
+  padding: 6px 8px;
   border-radius: 4px;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.btn-icon:hover {
+.btn-diagnose:hover,
+.btn-edit:hover,
+.btn-delete:hover {
   background: rgba(0,0,0,0.1);
+  transform: scale(1.1);
 }
 
-.server-item.active .btn-icon:hover {
+.server-item.active .btn-diagnose:hover,
+.server-item.active .btn-edit:hover,
+.server-item.active .btn-delete:hover {
   background: rgba(255,255,255,0.2);
+}
+
+.btn-diagnose:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-diagnose:disabled:hover {
+  background: none;
+  transform: none;
 }
 
 /* Buttons */
