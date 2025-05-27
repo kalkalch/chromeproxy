@@ -123,6 +123,10 @@ class ProxyPopup {
       this.checkForUpdates();
     });
 
+    document.getElementById('diagnosticsBtn').addEventListener('click', () => {
+      this.checkProxyDiagnostics();
+    });
+
     document.getElementById('autoUpdateToggle').addEventListener('change', (e) => {
       this.toggleAutoUpdate(e.target.checked);
     });
@@ -474,6 +478,47 @@ class ProxyPopup {
       });
     } catch (error) {
       console.error('Error opening repository:', error);
+    }
+  }
+
+  async checkProxyDiagnostics() {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'getProxyDiagnostics'
+      });
+      
+      if (response && response.diagnostics) {
+        console.log('Proxy diagnostics:', response.diagnostics);
+        
+        // Show diagnostics in a simple alert for now
+        const settings = response.diagnostics.value;
+        let message = 'Текущие настройки прокси:\n\n';
+        
+        if (settings && settings.mode) {
+          message += `Режим: ${settings.mode}\n`;
+          
+          if (settings.rules) {
+            if (settings.rules.singleProxy) {
+              message += `Прокси: ${settings.rules.singleProxy.scheme}://${settings.rules.singleProxy.host}:${settings.rules.singleProxy.port}\n`;
+            }
+            
+            if (settings.rules.bypassList && settings.rules.bypassList.length > 0) {
+              message += `Исключения: ${settings.rules.bypassList.join(', ')}\n`;
+            }
+            
+            if (settings.rules.fallbackToDirect) {
+              message += 'Fallback to direct: включен\n';
+            }
+          }
+        } else {
+          message += 'Прокси отключен или настройки не найдены';
+        }
+        
+        alert(message);
+      }
+    } catch (error) {
+      console.error('Error checking proxy diagnostics:', error);
+      alert('Ошибка при получении диагностики прокси');
     }
   }
 

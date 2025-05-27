@@ -508,6 +508,11 @@ input:checked + .slider:before {
   font-weight: 600;
 }
 
+.header-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 /* Form Overlay */
 .form-overlay {
   position: fixed;

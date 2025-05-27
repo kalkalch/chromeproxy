@@ -174,6 +174,11 @@ class ProxyManager {
           });
           break;
 
+        case 'getProxyDiagnostics':
+          const diagnostics = await this.getCurrentProxySettings();
+          sendResponse({ diagnostics });
+          break;
+
         default:
           sendResponse({ error: 'Unknown action' });
       }
@@ -322,23 +327,26 @@ class ProxyManager {
 
   async applyProxySettings(server) {
     try {
+      const proxyServer = {
+        scheme: this.getProxyScheme(server.type),
+        host: server.host,
+        port: parseInt(server.port)
+      };
+
       const config = {
         mode: 'fixed_servers',
         rules: {
-          singleProxy: {
-            scheme: this.getProxyScheme(server.type),
-            host: server.host,
-            port: parseInt(server.port)
-          },
+          singleProxy: proxyServer,
+          proxyForHttp: proxyServer,
+          proxyForHttps: proxyServer,
+          proxyForFtp: proxyServer,
           bypassList: server.excludeList || []
         }
       };
 
-      // Add DNS configuration if enabled
-      if (this.state.dnsEnabled) {
-        config.rules.proxyForHttps = config.rules.singleProxy;
-        config.rules.proxyForHttp = config.rules.singleProxy;
-        config.rules.proxyForFtp = config.rules.singleProxy;
+      // If DNS through proxy is disabled, allow fallback to direct connection for DNS
+      if (!this.state.dnsEnabled) {
+        config.rules.fallbackToDirect = true;
       }
 
       await chrome.proxy.settings.set({
@@ -347,6 +355,9 @@ class ProxyManager {
       });
 
       console.log('Proxy settings applied:', config);
+      
+      // Verify settings were applied correctly
+      setTimeout(() => this.getCurrentProxySettings(), 1000);
     } catch (error) {
       console.error('Error applying proxy settings:', error);
       throw error;
@@ -360,6 +371,17 @@ class ProxyManager {
     } catch (error) {
       console.error('Error clearing proxy settings:', error);
       throw error;
+    }
+  }
+
+  async getCurrentProxySettings() {
+    try {
+      const settings = await chrome.proxy.settings.get({ incognito: false });
+      console.log('Current proxy settings:', settings);
+      return settings;
+    } catch (error) {
+      console.error('Error getting current proxy settings:', error);
+      return null;
     }
   }
 
