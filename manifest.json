@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Chrome Proxy Manager",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Modern Chrome extension for managing proxy servers with multiple server support and exclusion lists",
   "permissions": [
     "proxy",
     "storage",
     "notifications",
-    "tabs"
+    "tabs",
+    "webRequest"
   ],
   "host_permissions": [
     "<all_urls>"

@@ -132,22 +132,27 @@ class ProxyPopup {
 
     const exclusionsText = this.translations?.exclusions || 'исключений';
     
-    serverList.innerHTML = servers.map(server => `
-      <div class="server-item ${server.active ? 'active' : ''}" data-id="${server.id}">
-        <div class="server-info">
-          <div class="server-name">${this.escapeHtml(server.name)}</div>
-          <div class="server-details">
-            ${this.getServerTypeLabel(server.type)} • ${this.escapeHtml(server.host)}:${server.port}
-            ${server.excludeList && server.excludeList.length > 0 ? ` • ${server.excludeList.length} ${exclusionsText}` : ''}
+    serverList.innerHTML = servers.map(server => {
+      const hasAuth = server.username && server.password;
+      const authIcon = hasAuth ? ' 🔐' : '';
+      
+      return `
+        <div class="server-item ${server.active ? 'active' : ''}" data-id="${server.id}">
+          <div class="server-info">
+            <div class="server-name">${this.escapeHtml(server.name)}${authIcon}</div>
+            <div class="server-details">
+              ${this.getServerTypeLabel(server.type)} • ${this.escapeHtml(server.host)}:${server.port}
+              ${server.excludeList && server.excludeList.length > 0 ? ` • ${server.excludeList.length} ${exclusionsText}` : ''}
+            </div>
+          </div>
+          <div class="server-actions">
+            <button class="btn-diagnose" data-id="${server.id}" title="Диагностика сервера">🔍</button>
+            <button class="btn-edit" data-id="${server.id}" title="Редактировать">✏️</button>
+            <button class="btn-delete" data-id="${server.id}" title="Удалить">🗑️</button>
           </div>
         </div>
-        <div class="server-actions">
-          <button class="btn-diagnose" data-id="${server.id}" title="Диагностика сервера">🔍</button>
-          <button class="btn-edit" data-id="${server.id}" title="Редактировать">✏️</button>
-          <button class="btn-delete" data-id="${server.id}" title="Удалить">🗑️</button>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     // Bind server item events
     this.bindServerEvents();
@@ -344,6 +349,8 @@ class ProxyPopup {
       document.getElementById('serverName').value = server.name;
       document.getElementById('serverHost').value = server.host;
       document.getElementById('serverPort').value = server.port;
+      document.getElementById('serverUsername').value = server.username || '';
+      document.getElementById('serverPassword').value = server.password || '';
       document.getElementById('excludeList').value = server.excludeList ? server.excludeList.join('\n') : '';
     } else {
       // Add mode
@@ -369,6 +376,8 @@ class ProxyPopup {
       type: 'http',
       host: formData.get('serverHost').trim(),
       port: parseInt(formData.get('serverPort')),
+      username: formData.get('serverUsername')?.trim() || '',
+      password: formData.get('serverPassword')?.trim() || '',
       excludeList: formData.get('excludeList')
         .split('\n')
         .map(line => line.trim())
@@ -547,6 +556,12 @@ class ProxyPopup {
       ipInfo = `🌐 ${this.translations?.yourIP || 'Ваш IP'}: ${testResult.proxyIp}`;
     }
     
+    // Информация об аутентификации
+    let authInfo = '';
+    if (server.username && server.password) {
+      authInfo = `🔐 ${this.translations?.authConfigured || 'Authentication configured'}: ${server.username}`;
+    }
+    
     const errorText = testResult.error ? 
       `${this.translations?.error || 'Ошибка'}: ${testResult.error}` : '';
     
@@ -555,6 +570,7 @@ class ProxyPopup {
       statusText,
       responseTimeText,
       ipInfo,
+      authInfo,
       errorText
     ].filter(Boolean).join('\n');
 
@@ -739,8 +755,12 @@ class ProxyPopup {
         serverType: 'Тип прокси *',
         host: 'Хост *',
         port: 'Порт *',
+        authSection: 'Аутентификация (Опционально)',
+        username: 'Имя пользователя',
+        password: 'Пароль',
+        authHelp: 'Оставьте пустым, если прокси не требует аутентификации',
+        authConfigured: 'Аутентификация настроена',
         excludeList: 'Список исключений',
-        excludeHelp: 'Домены и IP, которые не будут использовать прокси (по одному на строку)',
         cancel: 'Отмена',
         save: 'Сохранить',
         confirmDelete: 'Вы уверены, что хотите удалить этот сервер?',
@@ -785,8 +805,12 @@ class ProxyPopup {
         serverType: 'Proxy type *',
         host: 'Host *',
         port: 'Port *',
+        authSection: 'Authentication (Optional)',
+        username: 'Username',
+        password: 'Password',
+        authHelp: 'Leave empty if proxy does not require authentication',
+        authConfigured: 'Authentication configured',
         excludeList: 'Exclude list',
-        excludeHelp: 'Domains and IPs that will not use proxy (one per line)',
         cancel: 'Cancel',
         save: 'Save',
         confirmDelete: 'Are you sure you want to delete this server?',
@@ -825,6 +849,47 @@ class ProxyPopup {
     document.querySelector('.update-section .checkbox-label').textContent = t.autoUpdate;
     document.querySelector('.server-section h3').textContent = t.servers;
     document.getElementById('addServerBtn').textContent = t.addServer;
+
+    // Update form labels if form is visible
+    const authSectionTitle = document.querySelector('.auth-section-title');
+    if (authSectionTitle) {
+      authSectionTitle.textContent = t.authSection;
+    }
+    
+    const serverNameLabel = document.querySelector('label[for="serverName"]');
+    if (serverNameLabel) {
+      serverNameLabel.textContent = t.serverName;
+    }
+    
+    const serverHostLabel = document.querySelector('label[for="serverHost"]');
+    if (serverHostLabel) {
+      serverHostLabel.textContent = t.host;
+    }
+    
+    const serverPortLabel = document.querySelector('label[for="serverPort"]');
+    if (serverPortLabel) {
+      serverPortLabel.textContent = t.port;
+    }
+    
+    const serverUsernameLabel = document.querySelector('label[for="serverUsername"]');
+    if (serverUsernameLabel) {
+      serverUsernameLabel.textContent = t.username;
+    }
+    
+    const serverPasswordLabel = document.querySelector('label[for="serverPassword"]');
+    if (serverPasswordLabel) {
+      serverPasswordLabel.textContent = t.password;
+    }
+    
+    const excludeListLabel = document.querySelector('label[for="excludeList"]');
+    if (excludeListLabel) {
+      excludeListLabel.textContent = t.excludeList;
+    }
+    
+    const authHelp = document.querySelector('.form-group .form-help');
+    if (authHelp && authHelp.parentElement.querySelector('#serverUsername')) {
+      authHelp.textContent = t.authHelp;
+    }
 
     // Update status text
     const statusText = document.getElementById('statusText');

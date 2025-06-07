@@ -313,6 +313,8 @@ class ProxyManager {
       type: serverData.type,
       host: serverData.host,
       port: serverData.port,
+      username: serverData.username || '',
+      password: serverData.password || '',
       excludeList: serverData.excludeList || []
     };
 
@@ -338,6 +340,8 @@ class ProxyManager {
       type: serverData.type,
       host: serverData.host,
       port: serverData.port,
+      username: serverData.username || '',
+      password: serverData.password || '',
       excludeList: serverData.excludeList || []
     };
 
@@ -380,21 +384,39 @@ class ProxyManager {
     try {
       console.log('Applying proxy settings for server:', server);
       
-      const config = {
-        mode: 'fixed_servers',
-        rules: {
-          singleProxy: {
-            scheme: this.getProxyScheme(server.type),
-            host: server.host,
-            port: parseInt(server.port)
-          },
-          bypassList: server.excludeList || []
-        }
-      };
-
-      // Note: We don't add fallbackToDirect anymore as it allows bypassing proxy
-      // DNS through proxy is controlled by the proxy server itself
-      console.log('DNS through proxy enabled:', this.state.dnsEnabled);
+      let config;
+      
+      // If authentication is configured, use PAC script approach
+      if (server.username && server.password) {
+        console.log(`Configuring authenticated proxy for user: ${server.username}`);
+        
+        // Create PAC script with embedded credentials
+        const pacScript = `
+          function FindProxyForURL(url, host) {
+            return "PROXY ${server.username}:${server.password}@${server.host}:${server.port}";
+          }
+        `;
+        
+        config = {
+          mode: 'pac_script',
+          pacScript: {
+            data: pacScript
+          }
+        };
+      } else {
+        // Standard proxy configuration without authentication
+        config = {
+          mode: 'fixed_servers',
+          rules: {
+            singleProxy: {
+              scheme: this.getProxyScheme(server.type),
+              host: server.host,
+              port: parseInt(server.port)
+            },
+            bypassList: server.excludeList || []
+          }
+        };
+      }
 
       console.log('Proxy config to apply:', JSON.stringify(config, null, 2));
 
@@ -427,6 +449,8 @@ class ProxyManager {
                     const proxy = currentSettings.value.rules.singleProxy;
                     console.log(`Active proxy: ${proxy.scheme}://${proxy.host}:${proxy.port}`);
                   }
+                } else if (currentSettings.value.mode === 'pac_script') {
+                  console.log('Success: Proxy settings are in PAC script mode (with authentication)');
                 } else {
                   console.warn(`Unexpected proxy mode: ${currentSettings.value.mode}`);
                 }

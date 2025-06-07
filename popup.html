@@ -110,6 +110,24 @@
           </div>
 
           <div class="form-group">
+            <h4 class="auth-section-title">Authentication (Optional)</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="serverUsername">Username</label>
+                <input type="text" id="serverUsername" name="serverUsername" placeholder="username" autocomplete="username">
+              </div>
+              <div class="form-group">
+                <label for="serverPassword">Password</label>
+                <input type="password" id="serverPassword" name="serverPassword" placeholder="password" autocomplete="current-password">
+              </div>
+            </div>
+            <div class="form-help">Leave empty if proxy doesn't require authentication</div>
+            <div class="auth-note">
+              <small>Note: Chrome may prompt for credentials when connecting to authenticated proxies</small>
+            </div>
+          </div>
+
+          <div class="form-group">
             <label for="excludeList">Exclude List</label>
             <textarea id="excludeList" name="excludeList" placeholder="localhost&#10;127.0.0.1&#10;*.local&#10;example.com" rows="4"></textarea>
             <div class="form-help">Domains and IPs that won't use proxy (one per line)</div>
