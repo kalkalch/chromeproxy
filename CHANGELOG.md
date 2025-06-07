@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2024-12-27
+
+### Added
+- **Proxy Authentication Support**: Optional username and password fields for each proxy server
+- **PAC Script Implementation**: Automatic authentication using PAC (Proxy Auto-Configuration) scripts
+- **Authentication Indicator**: 🔐 icon displayed next to servers with configured authentication
+- **Enhanced Diagnostics**: Shows authentication status in server diagnostics
+- **Form Validation**: Proper handling of optional authentication fields
+
+### Changed
+- **Manifest V3 Compatibility**: Removed problematic webRequest blocking handlers
+- **Authentication Method**: Switched from webRequest to PAC script approach for better reliability
+- **User Experience**: Added informational notes about authentication behavior
+- **Form Layout**: Improved authentication section with clear optional labeling
+
+### Fixed
+- **ERR_PROXY_CONNECTION_FAILED**: Resolved proxy connection failures for authenticated servers
+- **Background Script Stability**: Eliminated "Receiving end does not exist" errors
+- **Chrome Compatibility**: Full compliance with Manifest V3 requirements
+- **Authentication Flow**: Automatic credential handling without manual prompts
+
+### Technical
+- Implemented PAC script generation with embedded credentials
+- Enhanced proxy configuration logic for authenticated vs non-authenticated servers
+- Improved error handling and logging for authentication scenarios
+- Updated form validation to handle optional authentication fields
+- Added comprehensive localization for all authentication-related UI elements
+
 ## [0.2.0] - 2024-12-27
 
 ### Added
